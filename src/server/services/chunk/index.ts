@@ -1,3 +1,4 @@
+import { fileEnv } from '@/config/file';
 import { JWTPayload } from '@/const/auth';
 import { serverDB } from '@/database/server';
 import { AsyncTaskModel } from '@/database/server/models/asyncTask';
@@ -71,8 +72,40 @@ export class ChunkService {
 
     if (!result) return;
 
-    // skip if already exist chunk tasks
-    if (skipExist && result.chunkTaskId) return;
+    // skip if already exist chunk tasks and the chunk task was successful
+    if (skipExist && result.chunkTaskId) {
+      const chunk_task_result = await this.asyncTaskModel.findById(result.chunkTaskId);
+
+      if (chunk_task_result) {
+        if (chunk_task_result.status === AsyncTaskStatus.Success) {
+          // check if embedding task exists and is successful
+          if (result.embeddingTaskId) {
+            const embedding_task_result = await this.asyncTaskModel.findById(
+              result.embeddingTaskId,
+            );
+
+            if (embedding_task_result && embedding_task_result.status === AsyncTaskStatus.Success) {
+              return;
+            } else {
+              // trigger embedding if auto embedding is enabled
+              if (fileEnv.CHUNKS_AUTO_EMBEDDING) {
+                return await this.asyncEmbeddingFileChunks(fileId, payload);
+              }
+            }
+          }
+          return;
+        }
+
+        // handle unsupported file type
+        if (
+          chunk_task_result.status === AsyncTaskStatus.Error &&
+          typeof chunk_task_result.error === 'string' &&
+          chunk_task_result.error.includes('Unsupported file type')
+        ) {
+          return;
+        }
+      }
+    }
 
     // 1. create a asyncTaskId
     const asyncTaskId = await this.asyncTaskModel.create({

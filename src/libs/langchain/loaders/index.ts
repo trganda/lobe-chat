@@ -26,7 +26,7 @@ export class ChunkingLoader {
   partitionContent = async (filename: string, content: Uint8Array) => {
     try {
       const fileBlob = new Blob([Buffer.from(content)]);
-      const txt = this.uint8ArrayToString(content);
+      const { txt, status } = this.uint8ArrayToString(content);
 
       const type = this.getType(filename?.toLowerCase());
 
@@ -65,9 +65,13 @@ export class ChunkingLoader {
         }
 
         default: {
-          throw new Error(
-            `Unsupported file type [${type}], please check your file is supported, or create report issue here: https://github.com/lobehub/lobe-chat/discussions/3550`,
-          );
+          if (status) {
+            return await TextLoader(txt);
+          } else {
+            throw new Error(
+              `Unsupported file type [${type}], please check your file is supported, or create report issue here: https://github.com/lobehub/lobe-chat/discussions/3550`,
+            );
+          }
         }
       }
     } catch (e) {
@@ -110,7 +114,11 @@ export class ChunkingLoader {
   };
 
   private uint8ArrayToString(uint8Array: Uint8Array) {
-    const decoder = new TextDecoder();
-    return decoder.decode(uint8Array);
+    try {
+      const decoder = new TextDecoder('utf8', { fatal: true });
+      return { status: true, txt: decoder.decode(uint8Array) };
+    } catch {
+      return { status: false, txt: '' };
+    }
   }
 }
